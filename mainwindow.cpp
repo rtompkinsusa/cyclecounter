@@ -27,11 +27,10 @@
 //user counts cycle2
 //TODO show when no other audits are available
 //TODO cycle 3
-//NA Jeff said not to do this:  tab with all audits
-//TODO handle diff selects based on audit type (cycle1, 2 or 3)
 //TODO prioritize by Location 1st 2 letters
 //TODO cycle2 assigned to diff user than cycle1 for that audit item
-//TODO validate count input is + double
+//done validate count input is + double
+//NA tab with all audits; Jeff said not to do this
 */
 
 MainWindow::MainWindow(QWidget *parent) :
@@ -55,8 +54,6 @@ MainWindow::MainWindow(QWidget *parent) :
     numEntries = 0;
     isMatched = 0;
     GetNextItem();
-
-
 }
 
 void MainWindow::GetNextItem()
@@ -72,11 +69,8 @@ void MainWindow::GetNextItem()
     }
 
     QSqlQuery query;
-
-    //get cycle1's if any
-    //TODO if no cycle1's get cycle2's
-
-    //TODO do a count on this if, and if no records get cycle2, ...
+    //test, else below: if no cycle1's get cycle2's
+    //TODO do query count on quantity of cycle1's ; and if no records get cycle2, ...
 
     if (query.exec("SELECT components.componentId, components.itemCode, components.location, components.description, audits.auditId "
                    "FROM components INNER JOIN audits ON audits.componentId = components.componentId WHERE audits.assigned = 0 "
@@ -104,11 +98,14 @@ void MainWindow::GetNextItem()
     }
     else
     {   //get cycle2 if no cycle1's
+        //TODO add logic so that cycle2 is a different user than cycle1
         if (query.exec("SELECT components.componentId, components.itemCode, components.location, components.description, audits.auditId "
                        "FROM components INNER JOIN audits ON audits.componentId = components.componentId WHERE audits.assigned = 0 "
-                       "AND audits.auditTypeId = 2 LIMIT 1"))
+                       "AND audits.auditTypeId = 2 "
+                       "LIMIT 1"))
+            //AND userId != ? currentUserId  change to query.prepare
         {
-            //TODO add logic so that cycle2 is a different user than cycle1
+
             while (query.next())
             {
                 currentComponentId = query.value(0).toInt();
@@ -127,12 +124,12 @@ void MainWindow::AssignAuditItem(int m_currentAuditId)
     if (cycleCountDb.open())
     {
         QSqlQuery query;
-        query.prepare("UPDATE audits SET assigned = 1, auditTypeId = :auditTypeId, userId = :userId "
-                      "WHERE auditId = :auditId");
+        query.prepare("UPDATE audits SET assigned = 1, auditTypeId = ?, userId = ? "
+                      "WHERE auditId = ?");
 
-        query.bindValue(":userId", userId);
-        query.bindValue(":auditTypeId", currentAuditTypeId);
-        query.bindValue(":auditId", m_currentAuditId);
+        query.addBindValue(userId);
+        query.addBindValue(currentAuditTypeId);
+        query.addBindValue(m_currentAuditId);
 
         qDebug()<<"userId: "<<userId<<", currentAuditTypeId: "<<currentAuditTypeId<<", currentAuditId: "<<m_currentAuditId;
 
@@ -152,15 +149,6 @@ void MainWindow::AssignAuditItem(int m_currentAuditId)
     }
 
 }
-//bool isOnlyDouble(const char* str)
-//{
-//    char* endptr = 0;
-//    strtod(str, &endptr);
-
-//    if(*endptr != '\0' || endptr == str)
-//        return false;
-//    return true;
-//}
 
 void MainWindow::on_btnSubmit_clicked()
 {
@@ -170,14 +158,13 @@ void MainWindow::on_btnSubmit_clicked()
     QString m_item = ui->lblItemCode->text();
     floorCount = ui->txtQuantity->text();
 
-
     //validate count is double
     try
     {
         double value = std::stod(floorCount.toStdString());
 
         qDebug() << "string value as double: " << value;
-        //here's the problem for after entering nan it doesn't check for match count
+        //TODO done but test after entering nan check for match count
 
         if(value>=0)
         {
@@ -197,7 +184,6 @@ void MainWindow::on_btnSubmit_clicked()
                     ui->txtQuantity->setFocus();
 
                     //SubmitDataNoMatch(value, currentAuditId);
-
                 }
             }
             else
@@ -212,7 +198,7 @@ void MainWindow::on_btnSubmit_clicked()
     }
     catch(std::exception& e)
     {
-        qDebug()  << "Could not convert string to double";
+        qDebug() << "Could not convert string to double";
 
         ErrorMessageBox("Quantity Must Be A Number !");
         numEntries = 0;
@@ -220,15 +206,14 @@ void MainWindow::on_btnSubmit_clicked()
         ui->txtQuantity->setText("");
         ui->txtQuantity->setFocus();
     }
-
 }
 
 
 bool MainWindow::CheckMatch(int m_floorCount, QString m_loc, QString m_item)
 {
-    //TODO when able to get live data convert this to diff source
+    //TODO when able to get live data convert this to diff source; and verify loc and item are paramaters used in as400
     //TODO handle if no results from query
-    //TODO need to check if duplicate entries for same item and same location
+    //TODO need to check if duplicate entries for same item and same location; for 4Wall need to accumulate same items???
 
     bool isMatched = false;
     int as400Count = -1;
@@ -243,7 +228,6 @@ bool MainWindow::CheckMatch(int m_floorCount, QString m_loc, QString m_item)
     while (queryServerItemQuantity.next())
     {
         //TODO check if more than 1 result is found
-
         as400Count = queryServerItemQuantity.value(0).toInt();
 
         if(as400Count == m_floorCount)
@@ -263,17 +247,15 @@ bool MainWindow::CheckMatch(int m_floorCount, QString m_loc, QString m_item)
 void MainWindow::SubmitDataMatched(double value, int currentAuditId)
 {
     strCurrentTime = QDateTime::currentDateTime().toString("MM:dd:yyyy-hh:mm:ss");
-    //check if matched
-    //bool MainWindow::CheckMatch(int m_floorCount, QString m_loc, QString m_item)
 
     //update as matched
     QSqlQuery isMatchedQuery;
-    isMatchedQuery.prepare("UPDATE audits SET completed = 1, matched = 1, timestamp = :timeStamp, count = :count "
-                           "WHERE auditId = :auditId");
+    isMatchedQuery.prepare("UPDATE audits SET completed = 1, matched = 1, timestamp = ?, count = ? "
+                           "WHERE auditId = ?");
 
-    isMatchedQuery.bindValue(":timeStamp", QDateTime::currentDateTime().toString("MM:dd:yyyy-hh:mm:ss"));
-    isMatchedQuery.bindValue(":count", value);
-    isMatchedQuery.bindValue(":auditid", currentAuditId);
+    isMatchedQuery.addBindValue(strCurrentTime);
+    isMatchedQuery.addBindValue(value);
+    isMatchedQuery.addBindValue(currentAuditId);
 
     if(isMatchedQuery.exec())
     {
@@ -384,21 +366,49 @@ void MainWindow::SubmitDataNoMatch(double value, int currentAuditId)
     //update as no match
     strCurrentTime = QDateTime::currentDateTime().toString("MM:dd:yyyy-hh:mm:ss");
     QSqlQuery noMatchedQuery;
-    noMatchedQuery.prepare("UPDATE audits SET completed = 1, matched = 0, timestamp = :timeStamp, count = :count "
-                           "WHERE auditId = :auditId");
+    noMatchedQuery.prepare("UPDATE audits SET completed = 1, matched = 0, timestamp = ?, count = ? "
+                           "WHERE auditId = ?");
 
-    noMatchedQuery.bindValue(":timeStamp",strCurrentTime);
-    noMatchedQuery.bindValue(":count", value);
-    noMatchedQuery.bindValue(":auditid", currentAuditId);
+    noMatchedQuery.addBindValue(strCurrentTime);
+    noMatchedQuery.addBindValue(value);
+    noMatchedQuery.addBindValue(currentAuditId);
 
     if(noMatchedQuery.exec())
     {
         ui->txtMessageBox->append("Count Uploaded for Item: " + ui->lblItemCode->text() + " " + strCurrentTime);
+        QSqlQuery queryInsert;
+        queryInsert.prepare("INSERT INTO audits(componentId, auditTypeId, assigned) VALUES (?,2,0)");
+        queryInsert.addBindValue(currentComponentId);
+        if(queryInsert.exec())
+        {
+            qDebug() << "No Match insert succeded";
+        }
+        else
+        {
+            qDebug()<< "updateNoMatchQuery INSERT failed ";
+        }
         GetNextItem();
     }
+    /*
+//    if(updateNoMatchQuery.exec())
+//    {
+//        QSqlQuery queryInsert;
+//        queryInsert.prepare("INSERT INTO audits(componentId, auditTypeId, assigned) VALUES (?,2,0)");
+//        queryInsert.addBindValue(currentComponentId);
+//        if(queryInsert.exec())
+//        {
+//            qDebug() << "No Match insert succeded";
+//        }
+//        else
+//        {
+//            qDebug()<< "updateNoMatchQuery INSERT failed ";
+//        }
+
+//    }
+*/
     else
     {
-        //TODO record this to error file so update can be done manually
+        //TODO record this to error file so update can be done manually; and no cycle2 created
         qDebug()<< "noMatchUpdate failed for auditId: " <<currentAuditId << "count value: "<<value;
     }
 }
